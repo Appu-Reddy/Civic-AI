@@ -68,7 +68,7 @@ def _chunk_code_page(text: str, chunk_size: int, chunk_overlap: int) -> List[str
 	return [chunk.strip() for chunk in splitter.split_text(text) if chunk.strip()]
 
 
-def chunk_pages(pages: Iterable[Dict], chunk_size: int = 500, chunk_overlap: int = 50) -> Iterator[Dict]:
+def chunk_pages(pages: Iterable[Dict], chunk_size: int = 250, chunk_overlap: int = 40) -> Iterator[Dict]:
 	for page in pages:
 		text = str(page.get("text", "")).strip()
 		if not text:

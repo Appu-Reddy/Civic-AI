@@ -13,8 +13,8 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_BASE_DIR = Path(__file__).resolve().parents[2]
 PDF_DIR = DEFAULT_BASE_DIR / "knowledge-base" / "PDFs"
 OUT_DIR = DEFAULT_BASE_DIR / "knowledge-base" / "Chunks"
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+CHUNK_SIZE = 100
+CHUNK_OVERLAP = 25
 BATCH_SIZE = 64
 LOG_EVERY_BATCHES = 10
 

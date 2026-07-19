@@ -7,6 +7,7 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Iterator, List
+from pprint import pprint
 
 import fitz # type: ignore
 
@@ -44,6 +45,20 @@ def _is_code_like(lines: List[str]) -> bool:
 			code_signals += 1
 
 	return code_signals >= max(1, len(lines) // 3)
+
+
+def _postprocess_text(text: str, has_code_block: bool) -> str:
+    if not text:
+        return ""
+
+    if has_code_block:
+        return text.strip()
+
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\s+([.,;:!?])", r"\1", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
 
 
 def _reflow_paragraph(lines: List[str]) -> str:
@@ -153,6 +168,7 @@ def parse_pdf(pdf_path: str) -> List[Dict]:
 				cleaned_lines = _clean_page_lines(lines, repeated_headers, repeated_footers)
 				text = "\n\n".join(cleaned_lines).strip()
 				has_code_block = any(_is_code_like(chunk.split("\n")) for chunk in cleaned_lines)
+				text = _postprocess_text(text, has_code_block)
 
 				if text:
 					pages.append(
@@ -199,6 +215,9 @@ if __name__ == "__main__":
 
 	parsed_pages = 0
 	for _page in parse_directory(str(DEFAULT_PDF_DIR)):
+		# for testing
+		# pprint(_page, width=120)
+		# print("-" * 100)
 		parsed_pages += 1
 
 	print(f"Total pages parsed: {parsed_pages}")

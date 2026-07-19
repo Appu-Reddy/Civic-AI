@@ -3,3 +3,5 @@ sentence-transformers
 tiktoken
 langchain-text-splitters
 numpy
+faiss-cpu
+google-generativeai
