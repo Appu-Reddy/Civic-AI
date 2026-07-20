@@ -115,7 +115,7 @@ def extract(subquery: str, retrieved_chunks: List[Dict]) -> Dict:
 if __name__ == "__main__":
 	from retriever import retrieve
 
-	test_subquery = "How does Python implement context managers?"
+	test_subquery = "Explain python variables."
 	chunks = retrieve(test_subquery, top_k=5)
 
 	result = extract(test_subquery, chunks)

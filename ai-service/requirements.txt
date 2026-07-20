@@ -5,3 +5,4 @@ langchain-text-splitters
 numpy
 faiss-cpu
 google-generativeai
+python-dotenv

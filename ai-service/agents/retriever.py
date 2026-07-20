@@ -23,8 +23,8 @@ if str(_AI_SERVICE_DIR) not in sys.path:
 
 from sentence_transformers import SentenceTransformer  # type: ignore
 
-from vectorDB.faiss import load_index, search  # type: ignore # Phase-2
-from ingestion.embedder import MODEL_NAME  # Phase-1 - same model used to build the index
+from vectorDB.faiss_util import load_index, search  # type: ignore
+from ingestion.embedder import MODEL_NAME
 
 from config import DEFAULT_TOP_K, DEFAULT_INDEX_DIR
 
@@ -52,7 +52,7 @@ def retrieve(
 	if index_dir == DEFAULT_INDEX_DIR:
 		if _INDEX is None or _ID_MAP is None:
 			raise FileNotFoundError(
-				f"No FAISS index loaded from {DEFAULT_INDEX_DIR}. Build it first (Phase-2's build_index())."
+				f"No FAISS index loaded from {DEFAULT_INDEX_DIR}. Build it first."
 			)
 		index, id_map = _INDEX, _ID_MAP
 	else:
@@ -68,7 +68,7 @@ def retrieve(
 
 
 if __name__ == "__main__":
-	sample_subquery = "How does Python implement context managers?"
+	sample_subquery = "Who is author of python?"
 	results = retrieve(sample_subquery, top_k=5)
 
 	print(f"Top {len(results)} results for {sample_subquery!r}:")
