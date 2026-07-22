@@ -1,15 +1,12 @@
 import json
-import logging
 import os
 import threading
 from typing import Any
-
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-from config import DEFAULT_MODEL  # type: ignore
 
-LOGGER = logging.getLogger(__name__)
+from config import DEFAULT_MODEL  # type: ignore
 
 load_dotenv()
 
@@ -63,11 +60,6 @@ def call_llm(
 ) -> str:
 
 	api_key = _get_next_api_key()
-
-	LOGGER.info(
-		"Using Gemini API key index %d",
-		(_current_key_index - 1) % len(_API_KEYS),
-	)
 
 	genai.configure(api_key=api_key)
 
@@ -123,11 +115,6 @@ def parse_json_response(raw_response: str) -> Any:
 
 
 if __name__ == "__main__":
-
-	logging.basicConfig(
-		level=logging.INFO,
-		format="%(levelname)s:%(name)s:%(message)s",
-	)
 
 	# JSON test
 	json_result = call_llm(

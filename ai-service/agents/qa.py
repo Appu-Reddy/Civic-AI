@@ -11,6 +11,7 @@ from typing import Dict
 
 from llm_client import call_llm, parse_json_response, LLMCallError
 from config import NO_EVIDENCE_MARKER
+from log import stage
 
 CANNOT_ANSWER_TEXT = "Cannot answer from available evidence."
 
@@ -58,7 +59,11 @@ SYSTEM_PROMPT = """You are the QA agent in a multi-agent RAG system (MA-RAG).
 	"grounded": false
 	}
 
-	NOTE: Maintain the answer small but closely perfect.
+	NOTE: 
+	1. Maintain the answer small but closely perfect.
+	2. Do not use Markdown formatting.
+	3. Do not use **bold**, bullet symbols, or code blocks.
+	4. Return plain text only.
 """
 
 
@@ -92,6 +97,8 @@ def answer(subquery: str, evidence: str) -> Dict:
 		raise LLMCallError(
 			f"QA response 'grounded' field is not a boolean. Raw output:\n{raw_response}"
 		)
+
+	stage("Result Loaded.")
 
 	return result
 

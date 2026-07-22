@@ -60,8 +60,6 @@ def _normalize(vectors: np.ndarray) -> np.ndarray:
 	return (vectors / norms).astype(np.float32, copy=False)
 
 
-# Build / save / load
-
 def build_faiss_index(embeddings: np.ndarray, normalize: bool = DEFAULT_NORMALIZE) -> faiss.Index:
 	"""
 	Build a flat, exact FAISS index over the given embeddings.
@@ -211,17 +209,19 @@ def search(
 	return results
 
 
-if __name__ == "__main__":
-	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+# TESTING:
 
-	summary = build_index(str(CHUNKS_DIR), str(FAISS_DIR))
-	print(summary)
+# if __name__ == "__main__":
+# 	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
-	if summary["total_vectors"] > 0:
-		index, id_map = load_index(str(FAISS_DIR))
-		sample_query = "How to run a code in python?"
-		query_vector = embed_query(sample_query)
-		results = search(index, id_map, query_vector, top_k=3)
-		print(f"Sample search results for {sample_query!r}:")
-		for r in results:
-			print(r)
+# 	summary = build_index(str(CHUNKS_DIR), str(FAISS_DIR))
+# 	print(summary)
+
+# 	if summary["total_vectors"] > 0:
+# 		index, id_map = load_index(str(FAISS_DIR))
+# 		sample_query = "How to run a code in python?"
+# 		query_vector = embed_query(sample_query)
+# 		results = search(index, id_map, query_vector, top_k=3)
+# 		print(f"Sample search results for {sample_query!r}:")
+# 		for r in results:
+# 			print(r)

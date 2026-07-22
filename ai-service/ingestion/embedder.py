@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import logging
 from collections import Counter
@@ -136,7 +134,9 @@ def run_pipeline(
 	return summary
 
 
-if __name__ == "__main__":
-	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
-	summary = run_pipeline(str(PDF_DIR), str(OUT_DIR), chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, batch_size=BATCH_SIZE)
-	print(summary)
+# TESTING:
+
+# if __name__ == "__main__":
+# 	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+# 	summary = run_pipeline(str(PDF_DIR), str(OUT_DIR), chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, batch_size=BATCH_SIZE)
+# 	print(summary)

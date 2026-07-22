@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 import logging
-import math
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List
 
@@ -17,31 +14,6 @@ def _count_tokens(text: str) -> int:
 	if not text:
 		return 0
 	return len(TOKENIZER.encode(text))
-
-
-def _split_sentences(text: str) -> List[str]:
-	paragraphs = [paragraph.strip() for paragraph in text.split("\n\n") if paragraph.strip()]
-	sentence_pattern = RecursiveCharacterTextSplitter(
-		chunk_size=1,
-		chunk_overlap=0,
-		length_function=len,
-		separators=[". ", "? ", "! ", "; ", ": ", "\n", " ", ""],
-	)
-
-	sentences: List[str] = []
-	for paragraph in paragraphs:
-		if "\n" in paragraph:
-			sentences.extend(line.strip() for line in paragraph.splitlines() if line.strip())
-			continue
-
-		pieces = sentence_pattern.split_text(paragraph)
-		if len(pieces) == 1:
-			sentences.append(paragraph)
-			continue
-
-		sentences.extend(piece.strip() for piece in pieces if piece.strip())
-
-	return sentences
 
 
 def _chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
@@ -96,20 +68,22 @@ def chunk_pages(pages: Iterable[Dict], chunk_size: int = 250, chunk_overlap: int
 			}
 
 
-if __name__ == "__main__":
-	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+# TESTING:
 
-	try:
-		from parser import parse_directory
-	except ImportError:  # pragma: no cover
-		from ingestion.parser import parse_directory
+# if __name__ == "__main__":
+# 	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
-	total_chunks = 0
-	total_tokens = 0
-	for chunk in chunk_pages(parse_directory(str(DEFAULT_PDF_DIR))):
-		total_chunks += 1
-		total_tokens += int(chunk["token_count"])
+# 	try:
+# 		from parser import parse_directory
+# 	except ImportError:  # pragma: no cover
+# 		from ingestion.parser import parse_directory
 
-	average_tokens = total_tokens / total_chunks if total_chunks else 0.0
-	print(f"Chunk count: {total_chunks}")
-	print(f"Average token_count: {average_tokens:.2f}")
+# 	total_chunks = 0
+# 	total_tokens = 0
+# 	for chunk in chunk_pages(parse_directory(str(DEFAULT_PDF_DIR))):
+# 		total_chunks += 1
+# 		total_tokens += int(chunk["token_count"])
+
+# 	average_tokens = total_tokens / total_chunks if total_chunks else 0.0
+# 	print(f"Chunk count: {total_chunks}")
+# 	print(f"Average token_count: {average_tokens:.2f}")

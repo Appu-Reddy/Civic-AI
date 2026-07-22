@@ -10,6 +10,7 @@ steps is graph.py's job (Phase-4).
 """
 
 from typing import Dict, List
+from log import stage
 
 from llm_client import call_llm, parse_json_response, LLMCallError
 
@@ -76,6 +77,11 @@ def define_step(original_query: str, current_step: Dict, history: List[Dict]) ->
 	in `history` (prior steps' subqueries + answers, resolving any
 	references the step's abstract goal makes to them).
 	"""
+
+	if not history:
+        # Nothing to resolve yet — first step's subquery is just its goal.
+		return {"step_id": current_step["step_id"], "subquery": current_step["goal"]}
+
 	user_prompt = (
 		f"Original query: {original_query!r}\n\n"
 		f"History:\n{_format_history(history)}\n\n"
@@ -94,6 +100,8 @@ def define_step(original_query: str, current_step: Dict, history: List[Dict]) ->
 		)
 	if not str(result.get("subquery", "")).strip():
 		raise LLMCallError(f"StepDefiner returned an empty subquery. Raw output:\n{raw_response}")
+
+	stage("Step definition completed.")
 
 	return result
 

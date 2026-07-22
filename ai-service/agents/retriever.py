@@ -1,7 +1,7 @@
 """
 Retriever agent
 
-Single responsibility: turn a subquery into ranked chunks using Phase-2's
+Single responsibility: turn a subquery into ranked chunks using
 FAISS search. This is NOT an LLM agent - no call_llm() usage anywhere in
 this file. It's a tool call: embed -> search -> return.
 
@@ -14,6 +14,8 @@ call is a real cost once queries run per-step across a multi-hop plan.
 import sys
 from pathlib import Path
 from typing import Dict, List
+
+from log import stage
 
 import numpy as np
 
@@ -60,6 +62,8 @@ def retrieve(
 
 	query_vector = _EMBEDDING_MODEL.encode([subquery], convert_to_numpy=True)[0]
 	query_vector = np.asarray(query_vector, dtype=np.float32)
+
+	stage("Retrieving....")
 
 	# search() normalizes the query vector internally (matches how the index
 	# was built - see vectorDB/faiss.py's DEFAULT_NORMALIZE), so we pass the

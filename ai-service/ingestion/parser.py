@@ -210,15 +210,17 @@ def parse_directory(dir_path: str) -> Iterator[Dict]:
 			yield page
 
 
-if __name__ == "__main__":
-	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+# TESTING:
 
-	parsed_pages = 0
-	for _page in parse_directory(str(DEFAULT_PDF_DIR)):
-		# for testing
-		# pprint(_page, width=120)
-		# print("-" * 100)
-		parsed_pages += 1
+# if __name__ == "__main__":
+# 	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
-	print(f"Total pages parsed: {parsed_pages}")
-	print(f"Errored files: {LAST_FAILED_FILES}")
+# 	parsed_pages = 0
+# 	for _page in parse_directory(str(DEFAULT_PDF_DIR)):
+# 		# for testing
+# 		# pprint(_page, width=120)
+# 		# print("-" * 100)
+# 		parsed_pages += 1
+
+# 	print(f"Total pages parsed: {parsed_pages}")
+# 	print(f"Errored files: {LAST_FAILED_FILES}")

@@ -10,6 +10,7 @@ graph.py's job (Phase-4).
 """
 
 from typing import Dict
+from log import stage
 
 from llm_client import call_llm, parse_json_response, LLMCallError
 
@@ -102,13 +103,17 @@ def plan(query: str) -> Dict:
 		raise LLMCallError(
 			f"Planner response missing keys {missing}. Raw output:\n{raw_response}"
 		)
+	
 	if not result["steps"]:
 		raise LLMCallError(f"Planner returned an empty steps list. Raw output:\n{raw_response}")
+	
 	if not result["is_multi_step"] and len(result["steps"]) != 1:
 		raise LLMCallError(
 			f"Planner said is_multi_step=False but returned {len(result['steps'])} steps "
 			f"(expected exactly 1). Raw output:\n{raw_response}"
 		)
+
+	stage("Planning completed.")
 
 	return result
 
