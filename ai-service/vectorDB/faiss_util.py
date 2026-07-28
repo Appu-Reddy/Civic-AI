@@ -8,7 +8,6 @@ import faiss  # type: ignore
 
 LOGGER = logging.getLogger(__name__)
 
-
 # Config
 
 DEFAULT_BASE_DIR = Path(__file__).resolve().parents[2]
@@ -142,9 +141,7 @@ def build_index(
 		"total_vectors": index.ntotal,
 		"embedding_dim": embeddings.shape[1],
 		"index_type": "IndexFlatIP (cosine)" if normalize else "IndexFlatL2",
-		"out_dir": str(out_dir),
 	}
-	LOGGER.info("Built FAISS index: %s", summary)
 	return summary
 
 

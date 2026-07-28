@@ -5,7 +5,6 @@ from typing import Any
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-
 from config import DEFAULT_MODEL  # type: ignore
 
 load_dotenv()
@@ -55,7 +54,6 @@ def call_llm(
 	system_prompt: str,
 	user_prompt: str,
 	model: str = DEFAULT_MODEL,
-	max_tokens: int = 1024,
 	temperature: float = 0.0,
 ) -> str:
 
@@ -70,7 +68,7 @@ def call_llm(
 
 	generation_config = genai.types.GenerationConfig(
 		temperature=temperature,
-		max_output_tokens=max_tokens,
+		# response_mime_type="application/json",
 	)
 
 	try:
@@ -114,16 +112,18 @@ def parse_json_response(raw_response: str) -> Any:
 		) from exc
 
 
-if __name__ == "__main__":
+# TESTING
 
-	# JSON test
-	json_result = call_llm(
-		system_prompt='Respond ONLY with JSON: {"answer":"<one word>"}.',
-		user_prompt="What is the capital of France?",
-	)
+# if __name__ == "__main__":
 
-	print("\nRaw JSON:")
-	print(json_result)
+# 	# JSON test
+# 	json_result = call_llm(
+# 		system_prompt='Respond ONLY with JSON: {"answer":"<one word>"}.',
+# 		user_prompt="What is the capital of France?",
+# 	)
 
-	print("\nParsed:")
-	print(parse_json_response(json_result))
+# 	print("\nRaw JSON:")
+# 	print(json_result)
+
+# 	print("\nParsed:")
+# 	print(parse_json_response(json_result))

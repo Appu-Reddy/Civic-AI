@@ -106,17 +106,19 @@ def define_step(original_query: str, current_step: Dict, history: List[Dict]) ->
 	return result
 
 
-if __name__ == "__main__":
-	original_query = "How does exception handling in the reference codebase's language compare to Python's?"
-	history = [
-		{
-			"step_id": 1,
-			"goal": "Identify the primary language used in the reference codebase",
-			"subquery": "What is the primary language used in the reference codebase?",
-			"answer": "Java",
-		},
-	]
-	current_step = {"step_id": 2, "goal": "how does that language handle exceptions"}
+# TESTING
 
-	result = define_step(original_query, current_step, history)
-	print(result)
+# if __name__ == "__main__":
+# 	original_query = "How does exception handling in the reference codebase's language compare to Python's?"
+# 	history = [
+# 		{
+# 			"step_id": 1,
+# 			"goal": "Identify the primary language used in the reference codebase",
+# 			"subquery": "What is the primary language used in the reference codebase?",
+# 			"answer": "Java",
+# 		},
+# 	]
+# 	current_step = {"step_id": 2, "goal": "how does that language handle exceptions"}
+
+# 	result = define_step(original_query, current_step, history)
+# 	print(result)

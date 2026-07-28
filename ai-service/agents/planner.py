@@ -85,6 +85,27 @@ SYSTEM_PROMPT = """You are the Planner agent in a multi-agent RAG system (MA-RAG
 	]
 	}
 
+	### Example 4 (multi-hop due to breadth, not dependency)
+	Query: "List all Fundamental Rights mentioned in this document."
+	Reasoning: This query is not a single fact lookup - it requires exhaustive
+	coverage across a document containing multiple distinct, independent
+	categories of rights. A single retrieval pass will only surface the
+	chunk(s) most similar to the query embedding, missing other categories
+	entirely. Even though these steps do NOT depend on each other's answers,
+	decomposing by known topical category increases retrieval coverage across
+	the whole document. This needs decomposition.
+	Output:
+	{
+	"original_query": "List all Fundamental Rights mentioned in this document.",
+	"is_multi_step": true,
+	"steps": [
+		{"step_id": 1, "goal": "Find provisions related to the right to equality"},
+		{"step_id": 2, "goal": "Find provisions related to the right to freedom"},
+		{"step_id": 3, "goal": "Find provisions related to the right against exploitation, religion, and cultural/educational rights"},
+		{"step_id": 4, "goal": "Find provisions related to the right to constitutional remedies"}
+	]
+	}
+
 	NOTE: Try to maintain minimum number of steps with a maximum of 3 or 4 steps ONLY.
 
 """
@@ -118,15 +139,17 @@ def plan(query: str) -> Dict:
 	return result
 
 
-if __name__ == "__main__":
-	single_hop_query = "What is a Python decorator?"
-	multi_hop_query = (
-		"How does exception handling in Java compare to how Python does it, "
-		"and which approach does C++ follow?"
-	)
+# TESTING
 
-	print("=== Single-hop plan ===")
-	print(plan(single_hop_query))
+# if __name__ == "__main__":
+# 	single_hop_query = "What is a Python decorator?"
+# 	multi_hop_query = (
+# 		"How does exception handling in Java compare to how Python does it, "
+# 		"and which approach does C++ follow?"
+# 	)
 
-	print("\n=== Multi-hop plan ===")
-	print(plan(multi_hop_query))
+# 	print("=== Single-hop plan ===")
+# 	print(plan(single_hop_query))
+
+# 	print("\n=== Multi-hop plan ===")
+# 	print(plan(multi_hop_query))

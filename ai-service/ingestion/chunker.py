@@ -5,9 +5,7 @@ from typing import Dict, Iterable, Iterator, List
 import tiktoken # type: ignore
 from langchain_text_splitters import RecursiveCharacterTextSplitter # type: ignore
 
-LOGGER = logging.getLogger(__name__)
 TOKENIZER = tiktoken.get_encoding("cl100k_base")
-DEFAULT_PDF_DIR = Path(__file__).resolve().parents[2] / "knowledge-base" / "PDFs"
 
 
 def _count_tokens(text: str) -> int:
@@ -70,6 +68,7 @@ def chunk_pages(pages: Iterable[Dict], chunk_size: int = 250, chunk_overlap: int
 
 # TESTING:
 
+# DEFAULT_PDF_DIR = Path(__file__).resolve().parents[2] / "knowledge-base" / "PDFs"
 # if __name__ == "__main__":
 # 	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 

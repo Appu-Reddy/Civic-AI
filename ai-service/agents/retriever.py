@@ -71,10 +71,12 @@ def retrieve(
 	return search(index, id_map, query_vector, top_k=top_k)
 
 
-if __name__ == "__main__":
-	sample_subquery = "Who is author of python?"
-	results = retrieve(sample_subquery, top_k=5)
+# TESTING
 
-	print(f"Top {len(results)} results for {sample_subquery!r}:")
-	for r in results:
-		print(f"  chunk_id={r['chunk_id']!r} score={r['score']:.4f}")
+# if __name__ == "__main__":
+# 	sample_subquery = "Who is author of python?"
+# 	results = retrieve(sample_subquery, top_k=5)
+
+# 	print(f"Top {len(results)} results for {sample_subquery!r}:")
+# 	for r in results:
+# 		print(f"  chunk_id={r['chunk_id']!r} score={r['score']:.4f}")

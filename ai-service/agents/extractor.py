@@ -23,9 +23,12 @@ SYSTEM_PROMPT = f"""You are the Extractor agent in a multi-agent RAG system (MA-
 	that directly help answer the subquery - do not include the full
 	chunk text, do not include tangential information, do not repeat
 	filler. Condense aggressively.
-	3. Synthesize the retained spans into one concise evidence passage. Note
-	which chunk_id each piece of retained evidence came from, inline (e.g.
-	"[chunk_id: c012]").
+	3. Evidence requirements:
+		- Maximum 80 words.
+		- Maximum 3 sentences.
+		- Never copy entire paragraphs.
+		- Keep evidence concise.
+		- Return valid JSON only.
 	4. If NONE of the retrieved chunks are relevant to the subquery, set
 	"evidence" to exactly this string: "{NO_EVIDENCE_MARKER}" - do not
 	fabricate evidence, do not leave it blank, do not explain why nothing
@@ -89,7 +92,10 @@ def extract(subquery: str, retrieved_chunks: List[Dict]) -> Dict:
 		"Produce the JSON extraction now."
 	)
 
-	raw_response = call_llm(system_prompt=SYSTEM_PROMPT, user_prompt=user_prompt)
+	raw_response = call_llm(
+		system_prompt=SYSTEM_PROMPT, 
+		user_prompt=user_prompt
+	)
 	result = parse_json_response(raw_response)
 
 	required_keys = {"subquery", "evidence", "source_chunk_ids"}
@@ -112,13 +118,15 @@ def extract(subquery: str, retrieved_chunks: List[Dict]) -> Dict:
 	return result
 
 
-if __name__ == "__main__":
-	from retriever import retrieve
+# TESTING
 
-	test_subquery = "Explain python variables."
-	chunks = retrieve(test_subquery, top_k=5)
+# if __name__ == "__main__":
+# 	from retriever import retrieve
 
-	result = extract(test_subquery, chunks)
-	print("Evidence:")
-	print(result["evidence"])
-	print("\nSource chunk IDs:", result["source_chunk_ids"])
+# 	test_subquery = "Explain python variables."
+# 	chunks = retrieve(test_subquery, top_k=5)
+
+# 	result = extract(test_subquery, chunks)
+# 	print("Evidence:")
+# 	print(result["evidence"])
+# 	print("\nSource chunk IDs:", result["source_chunk_ids"])

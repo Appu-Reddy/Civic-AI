@@ -88,8 +88,11 @@ def synthesize_final_answer(original_query: str, completed_steps: List[Dict]) ->
         f"You are synthesizing the final answer for a multi-step RAG workflow.\n"
         f"Original query: {original_query}\n\n"
         f"Completed step summaries:\n{step_summaries}\n\n"
-        "Produce one direct, coherent final answer that combines the steps. "
-        "Do not simply concatenate the step answers."
+        "Produce one direct, coherent final answer that combines the steps.\n"
+        "Do not simply concatenate the step answers.\n\n"
+        "Return ONLY the final answer as plain text.\n"
+        "Do NOT return JSON.\n"
+        "Do NOT use markdown.\n"
     )
     if has_gap:
         synthesis_prompt += (
@@ -99,9 +102,13 @@ def synthesize_final_answer(original_query: str, completed_steps: List[Dict]) ->
 
     try:
         return call_llm(
-            system_prompt="You synthesize a final answer for a multi-agent RAG workflow.",
+            system_prompt=(
+                "You synthesize a final answer for a multi-agent RAG workflow. "
+                "Always return plain text only. "
+                "Never return JSON. "
+                "Never use markdown."
+            ),
             user_prompt=synthesis_prompt,
-            max_tokens=512,
             temperature=0.0,
         ).strip()
     except Exception as exc:  # noqa: BLE001
@@ -150,22 +157,24 @@ def run_marag(query: str, top_k: int = 5, max_steps: int = MAX_STEPS) -> Dict:
     }
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+# TESTING
 
-    queries = [
-        "What is a Python tuple?",
-        "How different are Collections in Java and Python?",
-    ]
+# if __name__ == "__main__":
+#     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
-    for query in queries:
-        result = run_marag(query)
-        print(f"\n=== Query: {query} ===")
-        print("Final answer:")
-        print(result["final_answer"])
-        print("\nTrace:")
-        for step in result["steps"]:
-            print(
-                f"- goal={step.get('goal')!r} | subquery={step.get('subquery')!r} | "
-                f"answer={step.get('answer')!r} | grounded={step.get('grounded')}"
-            )
+#     queries = [
+#         "What is a Python tuple?",
+#         "How different are Collections in Java and Python?",
+#     ]
+
+#     for query in queries:
+#         result = run_marag(query)
+#         print(f"\n=== Query: {query} ===")
+#         print("Final answer:")
+#         print(result["final_answer"])
+#         print("\nTrace:")
+#         for step in result["steps"]:
+#             print(
+#                 f"- goal={step.get('goal')!r} | subquery={step.get('subquery')!r} | "
+#                 f"answer={step.get('answer')!r} | grounded={step.get('grounded')}"
+#             )

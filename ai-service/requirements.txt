@@ -6,3 +6,5 @@ numpy
 faiss-cpu
 google-generativeai
 python-dotenv
+Flask
+gunicorn

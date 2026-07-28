@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import math
 import os
@@ -7,12 +5,10 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Iterator, List
-from pprint import pprint
 
 import fitz # type: ignore
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_PDF_DIR = Path(__file__).resolve().parents[2] / "knowledge-base" / "PDFs"
 
 PAGE_NUMBER_PATTERN = re.compile(r"^(?:page\s*)?\d+(?:\s*/\s*\d+|\s*of\s*\d+)?$", re.IGNORECASE)
 WHITESPACE_PATTERN = re.compile(r"\s+")
@@ -208,19 +204,3 @@ def parse_directory(dir_path: str) -> Iterator[Dict]:
 		for page in pages:
 			LAST_TOTAL_PAGES += 1
 			yield page
-
-
-# TESTING:
-
-# if __name__ == "__main__":
-# 	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
-
-# 	parsed_pages = 0
-# 	for _page in parse_directory(str(DEFAULT_PDF_DIR)):
-# 		# for testing
-# 		# pprint(_page, width=120)
-# 		# print("-" * 100)
-# 		parsed_pages += 1
-
-# 	print(f"Total pages parsed: {parsed_pages}")
-# 	print(f"Errored files: {LAST_FAILED_FILES}")

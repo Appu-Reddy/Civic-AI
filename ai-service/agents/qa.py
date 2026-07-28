@@ -103,21 +103,23 @@ def answer(subquery: str, evidence: str) -> Dict:
 	return result
 
 
-if __name__ == "__main__":
-	answerable_evidence = (
-		"Context managers are implemented via the __enter__ and __exit__ "
-		"dunder methods, or via the @contextmanager decorator from contextlib. "
-		"[chunk_id: c002]"
-	)
-	result_ok = answer("How does Python implement context managers?", answerable_evidence)
-	print("=== Answerable case ===")
-	print(result_ok)
-	assert result_ok["grounded"] is True
+# TESTING
 
-	result_no_evidence = answer(
-		"How does Rust's borrow checker work?",
-		NO_EVIDENCE_MARKER,
-	)
-	print("\n=== No-evidence case ===")
-	print(result_no_evidence)
-	assert result_no_evidence["grounded"] is False
+# if __name__ == "__main__":
+# 	answerable_evidence = (
+# 		"Context managers are implemented via the __enter__ and __exit__ "
+# 		"dunder methods, or via the @contextmanager decorator from contextlib. "
+# 		"[chunk_id: c002]"
+# 	)
+# 	result_ok = answer("How does Python implement context managers?", answerable_evidence)
+# 	print("=== Answerable case ===")
+# 	print(result_ok)
+# 	assert result_ok["grounded"] is True
+
+# 	result_no_evidence = answer(
+# 		"How does Rust's borrow checker work?",
+# 		NO_EVIDENCE_MARKER,
+# 	)
+# 	print("\n=== No-evidence case ===")
+# 	print(result_no_evidence)
+# 	assert result_no_evidence["grounded"] is False

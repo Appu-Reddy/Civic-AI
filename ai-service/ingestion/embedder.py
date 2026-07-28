@@ -1,6 +1,5 @@
 import json
 import logging
-from collections import Counter
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Tuple
 
@@ -11,8 +10,8 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_BASE_DIR = Path(__file__).resolve().parents[2]
 PDF_DIR = DEFAULT_BASE_DIR / "knowledge-base" / "PDFs"
 OUT_DIR = DEFAULT_BASE_DIR / "knowledge-base" / "Chunks"
-CHUNK_SIZE = 100
-CHUNK_OVERLAP = 25
+CHUNK_SIZE = 250
+CHUNK_OVERLAP = 40
 BATCH_SIZE = 64
 LOG_EVERY_BATCHES = 10
 
@@ -74,7 +73,7 @@ def embed_chunks(
 	if embedding_batches:
 		embeddings = np.concatenate(embedding_batches, axis=0)
 	else:
-		embedding_dim = model.get_sentence_embedding_dimension()
+		embedding_dim = model.get_embedding_dimension()
 		embeddings = np.empty((0, embedding_dim), dtype=np.float32)
 
 	assert len(embeddings) == len(metadata)
@@ -90,53 +89,3 @@ def save_embeddings(embeddings: np.ndarray, metadata: List[Dict], out_dir: str) 
 	np.save(output_path / "embeddings.npy", embeddings.astype(np.float32, copy=False))
 	with (output_path / "metadata.json").open("w", encoding="utf-8") as handle:
 		json.dump(metadata, handle, ensure_ascii=False, indent=2)
-
-
-def run_pipeline(
-	pdf_dir: str,
-	out_dir: str,
-	chunk_size: int = CHUNK_SIZE,
-	chunk_overlap: int = CHUNK_OVERLAP,
-	batch_size: int = BATCH_SIZE,
-) -> Dict:
-	try:
-		import parser as parser_module
-	except ImportError:  # pragma: no cover
-		from ingestion import parser as parser_module
-
-	try:
-		from chunker import chunk_pages
-	except ImportError:  # pragma: no cover
-		from ingestion.chunker import chunk_pages
-
-	pdf_root = Path(pdf_dir)
-	total_files = len([path for path in pdf_root.rglob("*") if path.is_file() and path.suffix.lower() == ".pdf"])
-	page_counter = {"count": 0}
-
-	def _tracked_pages() -> Iterator[Dict]:
-		for page in parser_module.parse_directory(pdf_dir):
-			page_counter["count"] += 1
-			yield page
-
-	chunk_stream = chunk_pages(_tracked_pages(), chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-	embeddings, metadata = embed_chunks(chunk_stream, model_name=MODEL_NAME, batch_size=batch_size)
-	save_embeddings(embeddings, metadata, out_dir)
-
-	chunks_per_source = dict(Counter(item["source_file"] for item in metadata))
-	summary = {
-		"total_files": total_files,
-		"total_pages": page_counter["count"],
-		"total_chunks": len(metadata),
-		"embedding_dim": int(embeddings.shape[1]) if embeddings.ndim == 2 and embeddings.size else 0,
-		"chunks_per_source": chunks_per_source,
-		"failed_files": sorted(set(parser_module.LAST_FAILED_FILES)),
-	}
-	return summary
-
-
-# TESTING:
-
-# if __name__ == "__main__":
-# 	logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
-# 	summary = run_pipeline(str(PDF_DIR), str(OUT_DIR), chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, batch_size=BATCH_SIZE)
-# 	print(summary)
