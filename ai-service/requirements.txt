@@ -1,0 +1,10 @@
+PyMuPDF
+sentence-transformers
+tiktoken
+langchain-text-splitters
+numpy
+faiss-cpu
+google-generativeai
+python-dotenv
+Flask
+gunicorn
