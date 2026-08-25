@@ -158,7 +158,7 @@ def embed_query(text: str, model_name: Optional[str] = None) -> np.ndarray:
 
 	if model_name is None:
 		try:
-			from embedder import MODEL_NAME as model_name  # type: ignore
+			from ai_service.ingestion.embedder import MODEL_NAME as model_name
 		except ImportError:  # pragma: no cover
 			from ingestion.embedder import MODEL_NAME as model_name  # type: ignore
 
