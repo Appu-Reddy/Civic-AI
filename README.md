@@ -29,7 +29,7 @@ It's domain-independent: works for education, health, law, finance, policy, or a
 
 ## How It Works
 
-![Civic-AI Architecture](assets/architecture.png)
+![Civic-AI Architecture](assests/architecture.png)
 
 **Document Ingestion Pipeline**
 `Parser` extracts text and page metadata from PDFs → `Cleaner` removes noise and normalizes text → `Chunker` splits text into meaningful chunks → `Embedder` generates vector embeddings (`all-MiniLM-L6-v2`) → `RabbitMQ` queues the job for async processing.
