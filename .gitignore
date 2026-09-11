@@ -48,15 +48,6 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
-# Ignore generated vector indexes
-backend/knowledge-base/FAISS/
-
-# Ignore generated chunks
-backend/knowledge-base/Chunks/
-
-# Ignore uploaded PDFs
-backend/knowledge-base/PDFs/
-
 
 uploads/
 tmp/
@@ -75,5 +66,5 @@ build/
 *.old
 *.orig
 
-knowledge-base/Chunks/
-knowledge-base/FAISS/
+rag_pipeline/data/indexes/
+rag_pipeline/data/processed/
