@@ -41,22 +41,22 @@ for _logger_name in (
 from flask import Flask, jsonify, request
 from werkzeug.utils import secure_filename
 
-from ai.pipeline import load_retrieval_context, run_pipeline
-from database.mongodb import get_collection
-from ingestion.ingest import run_ingestion
-from services.redis import (
+from rag_pipeline.ai.pipeline import load_retrieval_context, run_pipeline
+from rag_pipeline.database.mongodb import get_collection
+from rag_pipeline.ingestion.ingest import run_ingestion
+from rag_pipeline.services.redis import (
     flush_all_caches,
     get_job_status,
     get_query_cache,
     set_query_cache,
 )
-from services.rabbitmq import publish_ingestion_job
+from rag_pipeline.services.rabbitmq import publish_ingestion_job
 
 BASE_DIR      = Path(__file__).resolve().parent
-INDEX_DIR     = BASE_DIR / "data" / "indexes" / "faiss"
-GRAPH_DIR     = BASE_DIR / "data" / "indexes" / "graph"
-PDF_DIR       = BASE_DIR / "data" / "pdfs"
-PROCESSED_DIR = BASE_DIR / "data" / "processed"
+INDEX_DIR     = BASE_DIR / "rag_pipeline" / "data" / "indexes" / "faiss"
+GRAPH_DIR     = BASE_DIR / "rag_pipeline" / "data" / "indexes" / "graph"
+PDF_DIR       = BASE_DIR / "rag_pipeline" / "data" / "pdfs"
+PROCESSED_DIR = BASE_DIR / "rag_pipeline" / "data" / "processed"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
@@ -115,8 +115,8 @@ def health():
     except Exception:
         pass
 
-    from services.redis import is_available as redis_up
-    from services.rabbitmq import is_available as rabbit_up
+    from rag_pipeline.services.redis import is_available as redis_up
+    from rag_pipeline.services.rabbitmq import is_available as rabbit_up
     redis_ready  = redis_up()
     rabbit_ready = rabbit_up()
 
@@ -265,7 +265,7 @@ def job_status(job_id: str):
     Returns 404 if the job_id is unknown (job never existed, or TTL expired).
     Returns 503 if Redis is unavailable (cannot look up status).
     """
-    from services.redis import is_available as redis_up
+    from rag_pipeline.services.redis import is_available as redis_up
     if not redis_up():
         return jsonify({
             "error": "Status store (Redis) is unavailable. Cannot look up job status.",

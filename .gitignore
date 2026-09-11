@@ -66,5 +66,5 @@ build/
 *.old
 *.orig
 
-data/indexes/
-data/processed/
+rag_pipeline/data/indexes/
+rag_pipeline/data/processed/
