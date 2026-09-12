@@ -1,110 +1,143 @@
+"""
+planner.py — Query planner
+
+Single LLM call that analyses the user query and returns:
+    is_multi_hop : bool          — True when the query needs multiple retrieval steps
+    steps        : list[dict]    — each dict has a "sub_query" key
+                                   (single-hop → exactly one step equal to the original query)
+"""
+
 import json
+import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
 
 from ai.key import get_gemini_model
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+logger = logging.getLogger(__name__)
 
-class QueryPlan(BaseModel):
-    raw_query: str                  = Field(description="Original user query")
-    domain_hint: Optional[str]      = Field(None, description="Subject domain inferred from the query (e.g. 'climate', 'finance', 'medicine') — null if unclear")
-    topic: Optional[str]            = Field(None, description="Specific topic or subject within the domain (e.g. 'carbon emissions', 'loan interest rates')")
-    entity_focus: Optional[str]     = Field(None, description="Named entity the query is primarily about (a person, organisation, concept, policy, product, etc.)")
-    context_attributes: list[str]   = Field(default_factory=list, description="Any contextual constraints or filters mentioned (e.g. 'after 2020', 'in the EU', 'for SMEs')")
-    keywords: list[str]             = Field(default_factory=list, description="3-7 important concepts to search for in documents")
-    is_multi_hop: bool              = Field(False, description="True only when the query genuinely requires retrieving from two clearly separate topic areas")
-    intent: str                     = Field("find_information", description="One of: find_information, explain_concept, compare_items, find_details, summarise_topic, trace_relationship, general_info")
-    missing_attributes: list[str]   = Field(default_factory=list, description="Attributes that would help answer better but are not provided")
+MAX_STEPS: int = 3
 
-    def to_context_string(self) -> str:
-        parts = [f"Query: {self.raw_query}"]
-        if self.domain_hint:          parts.append(f"Domain: {self.domain_hint}")
-        if self.topic:                parts.append(f"Topic: {self.topic}")
-        if self.entity_focus:         parts.append(f"Entity: {self.entity_focus}")
-        if self.context_attributes:   parts.append(f"Context: {', '.join(self.context_attributes)}")
-        if self.keywords:             parts.append(f"Keywords: {', '.join(self.keywords)}")
-        parts.append(f"Multi-hop: {self.is_multi_hop}  Intent: {self.intent}")
-        return " | ".join(parts)
+@dataclass
+class QueryPlan:
+    raw_query: str
+    is_multi_hop: bool
+    steps: list[dict] = field(default_factory=list)
+    # steps is a list of {"sub_query": "..."}
+
+    def sub_queries(self) -> list[str]:
+        return [s["sub_query"] for s in self.steps]
 
 
 _PLANNER_PROMPT = """\
-You are an expert assistant that analyses user queries about information contained in PDF documents.
-The documents can cover any subject — science, law, finance, medicine, history, technology, policy, or anything else.
+You are an expert assistant that analyses user questions about PDF documents.
 
-Given the user query below, extract structured information as a JSON object with these keys:
-- "domain_hint": the subject domain the query is about (e.g. "climate change", "financial regulation", "public health") — null if completely unclear
-- "topic": the specific topic or sub-area within the domain (e.g. "carbon tax mechanisms", "Basel III capital ratios") — null if not clear
-- "entity_focus": the primary named entity the user is asking about — a person, organisation, concept, policy, product, law, etc. — null if none
-- "context_attributes": list of any contextual filters or constraints mentioned (e.g. "after 2020", "in developing countries", "for small businesses") — empty list if none
-- "keywords": list of 3-7 important concepts or terms to search for in documents
-- "is_multi_hop": true ONLY if the query explicitly needs information from two clearly separate topic areas that cannot be answered in a single lookup. Prefer false whenever possible.
-- "intent": one of "find_information", "explain_concept", "compare_items", "find_details", "summarise_topic", "trace_relationship", "general_info"
-- "missing_attributes": list of attributes that would help answer better but are not provided in the query
+Given the user query below, decide:
+1. Does the query require multiple sequential retrieval steps to answer correctly?
+   Set "is_multi_hop" to true ONLY when the query explicitly needs information from
+   two or more clearly separate aspects that cannot be answered in a single lookup.
+   Prefer false for straightforward questions.
 
-IMPORTANT: The entire answer will be produced in at most 3 retrieval steps regardless of complexity.
-Set is_multi_hop=true only when the query genuinely cannot be answered without retrieving from two distinct topic areas.
+2. Decompose the query into AT MOST {max_steps} sequential sub-queries.
+   - If is_multi_hop is false, produce exactly ONE step whose sub_query is the original query.
+   - If is_multi_hop is true, produce 2-{max_steps} steps where each sub_query is a
+     specific, self-contained question. The LAST step must synthesise or compare the
+     prior steps (e.g. "Given the above findings, compare / summarise / conclude...").
 
-Return ONLY valid JSON. No explanation, no markdown fences.
+Return ONLY valid JSON — no markdown fences, no explanation:
+{{
+  "is_multi_hop": <true|false>,
+  "steps": [
+    {{"sub_query": "<specific question for step 1>"}},
+    {{"sub_query": "<specific question for step 2>"}},
+    ...
+  ]
+}}
 
+Rules:
+- Maximum {max_steps} steps. Never exceed this.
+- Every step must have "sub_query" as a non-empty string.
+- Do NOT wrap the JSON in markdown fences.
 
 User query: {query}
 """
 
+def _clean_json(text: str) -> str:
+    """
+    Robustly extract and clean a JSON object from raw LLM output.
 
-def _parse_json_response(text: str) -> dict:
+    Order of operations matters:
+    1. Normalize escaped formatting markers returned by some LLM responses
+    2. Strip markdown fences (```json ... ```)
+    3. Extract the outermost {...} block — handles leading/trailing prose
+    """
+    # 1. Normalize JSON that was returned with literal escaped line breaks.
+    if "\\n" in text and "\n" not in text:
+        text = text.replace("\\n", " ")
+        text = text.replace("\\r", " ").replace("\\t", " ")
+
+    # 2. Strip markdown fences
     text = re.sub(r"```(?:json)?", "", text).strip().rstrip("`").strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        raise ValueError(f"Could not parse JSON from Gemini response:\n{text}")
 
+    # 3. Extract the outermost JSON object before touching control chars
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        text = match.group()
+
+    return text
+
+
+def _parse_json(text: str) -> dict:
+    cleaned = _clean_json(text)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Could not parse JSON from response: {e}\n{cleaned[:300]}")
 
 def plan_query(query: str) -> QueryPlan:
-    model = get_gemini_model()
-    response = model.generate_content(_PLANNER_PROMPT.format(query=query))
-    data = _parse_json_response(response.text.strip())
-    data.setdefault("raw_query", query)
-    data.setdefault("keywords", [])
-    data.setdefault("is_multi_hop", False)
-    data.setdefault("intent", "general_info")
-    data.setdefault("missing_attributes", [])
-    data.setdefault("context_attributes", [])
-    plan = QueryPlan(**{k: v for k, v in data.items() if k in QueryPlan.model_fields})
-    return plan.model_copy(update={"raw_query": query})
+    """
+    Call the LLM once to produce a QueryPlan.
 
+    Returns a QueryPlan with:
+        is_multi_hop  — whether multiple hops are needed
+        steps         — list of {"sub_query": "..."} dicts (1–MAX_STEPS items)
 
-## TESTING ##
-# if __name__ == "__main__":
-#     import sys
+    On any LLM or parse failure falls back to a safe single-step plan.
+    """
+    try:
+        model = get_gemini_model()
+        response = model.generate_content(
+            _PLANNER_PROMPT.format(query=query, max_steps=MAX_STEPS)
+        )
+        data = _parse_json(response.text.strip())
 
-#     BASE_DIR = Path(__file__).resolve().parent.parent
-#     if str(BASE_DIR) not in sys.path:
-#         sys.path.insert(0, str(BASE_DIR))
+        is_multi_hop = bool(data.get("is_multi_hop", False))
+        raw_steps = data.get("steps", [])
 
-#     print(f"\n{'='*60}")
-#     print("PLANNER — generic test\n")
+        if not isinstance(raw_steps, list) or len(raw_steps) == 0:
+            raise ValueError("'steps' must be a non-empty list")
 
-#     for q in [
-#         "What are the main objectives described in the document?",
-#         "Summarise the key findings of the report.",
-#         "What evidence is given for the conclusion in chapter 3?",
-#     ]:
-#         print(f"Query: {q}")
-#         try:
-#             plan = plan_query(q)
-#             print(f"  intent={plan.intent}  multi_hop={plan.is_multi_hop}  keywords={plan.keywords}")
-#             print(f"  domain_hint={plan.domain_hint}  topic={plan.topic}  entity_focus={plan.entity_focus}")
-#         except Exception as e:
-#             print(f"  ERROR: {e}")
-#         print()
+        steps: list[dict] = []
+        for i, step in enumerate(raw_steps[:MAX_STEPS]):
+            sub_query = str(step.get("sub_query", "")).strip()
+            if not sub_query:
+                raise ValueError(f"Step {i + 1} has an empty sub_query")
+            steps.append({"sub_query": sub_query})
 
-#     print("Planner test complete.")
+        # Enforce consistency: single-hop must have exactly one step
+        if not is_multi_hop:
+            steps = [{"sub_query": query}]
+        return QueryPlan(raw_query=query, is_multi_hop=is_multi_hop, steps=steps)
+
+    except Exception as exc:
+        logger.warning("plan_query failed (%s) — falling back to single-step plan.", exc)
+        return QueryPlan(
+            raw_query=query,
+            is_multi_hop=False,
+            steps=[{"sub_query": query}],
+        )

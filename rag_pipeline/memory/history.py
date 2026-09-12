@@ -19,6 +19,9 @@ class HistoryEntry:
     evidence: list[EvidenceRef] = field(default_factory=list)
     entities: dict[str, list[str]] = field(default_factory=dict)
     satisfied: bool = True
+    # Multi-hop fields — populated by run_multihop_pipeline()
+    sub_query: str = ""        # the per-step sub_query from decompose_query()
+    answer: str = ""           # the per-step generated answer
 
     def source_citations(self) -> list[str]:
         seen: set[str] = set()
@@ -40,6 +43,25 @@ class HistoryEntry:
             lines.append(f"Sources: {'; '.join(citations)}")
         if not self.satisfied:
             lines.append("Note: Insufficient evidence found for this step.")
+        return "\n".join(lines)
+
+    def to_step_context_block(self) -> str:
+        """
+        Compact block used by multi-hop generator prompts.
+        Includes the sub_query and its generated answer so subsequent steps
+        have the full prior answer as context, not just evidence snippets.
+        """
+        lines = [f"[Step {self.step_number}]"]
+        q = self.sub_query or self.objective
+        if q:
+            lines.append(f"Question: {q}")
+        if self.answer:
+            lines.append(f"Answer: {self.answer}")
+        elif self.summary:
+            lines.append(f"Summary: {self.summary}")
+        citations = self.source_citations()
+        if citations:
+            lines.append(f"Sources: {'; '.join(citations)}")
         return "\n".join(lines)
 
 
@@ -94,6 +116,17 @@ class HistoryStore:
             return ""
         blocks = [e.to_context_block() for e in self.all_entries()]
         return "--- Prior Reasoning Steps ---\n" + "\n\n".join(blocks) + "\n--- End ---"
+
+    def to_step_context_string(self) -> str:
+        """
+        Serialise all completed steps as question+answer pairs for injection
+        into multi-hop generator prompts. Each step includes its sub_query and
+        full answer so the LLM can reference prior answers when synthesising.
+        """
+        if not self._entries:
+            return ""
+        blocks = [e.to_step_context_block() for e in self.all_entries()]
+        return "--- Previous Steps ---\n" + "\n\n".join(blocks) + "\n--- End of Previous Steps ---"
 
     def is_empty(self) -> bool:
         return len(self._entries) == 0

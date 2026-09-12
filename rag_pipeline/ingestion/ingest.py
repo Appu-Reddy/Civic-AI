@@ -31,6 +31,7 @@ from ingestion.processed import (
 from retrieval.faiss import build_index
 from retrieval.graph import build_graph, save_graph
 from database.mongodb import get_collection, store_embedded_chunks, clear_collection
+from ingestion.domain_index import build_domain_keywords, save_domain_keywords
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -141,6 +142,19 @@ def run_ingestion(
         try:
             G = build_graph(chunks)
             save_graph(G, graph_dir=graph_dir)
+
+            # Build and persist the domain keyword map from graph + chunk metadata
+            chunk_metadata_map = {
+                ec.chunk_id: {
+                    "document_name": ec.document_name,
+                    "domain": ec.domain,
+                    "text": ec.text,
+                }
+                for ec in embedded
+            }
+            domain_kw = build_domain_keywords(G, chunk_metadata_map)
+            save_domain_keywords(domain_kw, index_dir)
+
             summary["graph"] = {"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "graph_dir": str(graph_dir), "elapsed_s": round(time.time() - t0, 2), "skipped": False}
         except Exception as e:
             logger.error(f"Graph index build failed: {e}")

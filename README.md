@@ -1,209 +1,202 @@
 # Civic-AI
 
-Civic-AI is a document-grounded question-answering system. Upload PDFs, ask questions in plain English, and get answers backed by citations to the exact source pages — with a clear "not enough evidence" response when the documents don't cover it.
+Civic-AI is a document-grounded question-answering backend. Users upload PDF documents and ask questions in natural language. The system retrieves relevant passages, generates an answer with source-page citations, and validates whether the answer is supported by the indexed documents.
 
-It's domain-independent: works for education, health, law, finance, policy, or any other PDF-based content. No hard-coded schema or fixed set of attributes required.
+The application is domain-independent. It can work with policy, education, health, law, finance, or other text-based PDF collections.
 
 ## Features
 
-- 📄 **PDF ingestion** — parses, chunks, and indexes documents automatically
-- 🔍 **Hybrid retrieval** — combines semantic search (FAISS) with a knowledge graph (NetworkX) for better context
-- 🤖 **Grounded answers** — powered by Gemini 2.5 Flash, always cited to source pages
-- ✅ **Answer validation** — checks that claims in the answer are actually supported by evidence
-- ⚡ **Caching** — Redis-backed caching for fast repeat queries
-- 📥 **Async uploads** — optional RabbitMQ queue for background ingestion of large PDFs
+- Hybrid retrieval — FAISS semantic search + NetworkX knowledge graph
+- Gemini-based grounded answer generation with source-page citations
+- Automatic single-hop and multi-hop query planning
+- Answer validation with a heuristic fallback
+- Redis query caching + optional async ingestion via RabbitMQ
 
-## Tech Stack
-
-| Component | Technology |
-|---|---|
-| API | Flask 3 |
-| LLM | Google Gemini 2.5 Flash |
-| Embeddings | Sentence Transformers (`all-MiniLM-L6-v2`) |
-| Vector search | FAISS |
-| Graph search | NetworkX |
-| Document store | MongoDB |
-| Cache | Redis |
-| Job queue | RabbitMQ |
-| PDF parsing | pdfplumber |
-
-## How It Works
+## Architecture
 
 ![Civic-AI Architecture](assests/architecture.png)
 
-**Document Ingestion Pipeline**
-`Parser` extracts text and page metadata from PDFs → `Cleaner` removes noise and normalizes text → `Chunker` splits text into meaningful chunks → `Embedder` generates vector embeddings (`all-MiniLM-L6-v2`) → `RabbitMQ` queues the job for async processing.
+![How it Works](assests/sequence.png)
 
-**AI Pipeline**
-`Planner` understands the query and identifies information needs → `Step Definer` breaks it into retrieval steps → `Retriever` runs hybrid search (FAISS + Graph) → `Generator` produces an answer with Gemini 2.5 Flash → `Validator` checks the answer's grounding against retrieved evidence → a cited **Final Response** is returned.
-
-**Storage & Indexes**
-- **MongoDB** — document metadata, chunks, vectors, graph data, job status/cache
-- **FAISS** — vector index for semantic search
-- **Graph (NetworkX)** — entity relationships, concept connections, hybrid search support
-
-**External Services**
-- **Redis** — caches queries/results and tracks job status
-- **RabbitMQ** — async ingestion queue for background processing
-- **OCR** *(planned)* — text extraction from scanned/image-based PDFs
-
-## Getting Started
+## Setup
 
 ```bash
-# Install dependencies
+cd backend
 pip install -r requirements.txt
+```
 
-# Ingest your PDFs (place them in data/pdfs/ first)
-python -m ingestion.ingest --skip-mongo
+Configure `backend/.env` — see [Environment Variables](#environment-variables).
 
-# Start the API
+Start the API:
+
+```bash
 python app.py
 ```
 
-The API runs on `http://localhost:3001`.
+The API listens on `http://localhost:3001`.
 
-**Optional — for async uploads:** start MongoDB, Redis, and RabbitMQ, then run the worker in a separate process:
+## Ingestion
 
-```bash
-python -m worker
-```
+- Place PDFs in `backend/rag_pipeline/data/pdfs/`
+- Each PDF is parsed, chunked, and embedded
+- Results are stored in FAISS, the knowledge graph, and (optionally) MongoDB
+- Re-run with `rebuild=true` after changing source documents — this also clears stale Redis caches
 
-## API Endpoints
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/v1/health` | GET | Check system status |
-| `/api/v1/embed` | POST | Ingest all PDFs in `data/pdfs/` |
-| `/api/v1/upload` | POST | Upload a single PDF |
-| `/api/v1/status/<job_id>` | GET | Check async ingestion progress |
-| `/api/v1/query` | POST | Ask a question |
-
-### Example query
-
-```json
-POST /api/v1/query
-{
-  "query": "What are the main findings of the report?",
-  "final_top_k": 5
-}
-```
-
-## Performance: Caching & Async Processing
-
-**Before:** every `/query` call ran the full AI pipeline from scratch, and every `/upload` blocked the HTTP request until ingestion finished — which could take minutes for large PDFs.
-
-**After:**
-
-```
-/query  →  Redis?  →  hit:  return cached JSON immediately
-                   →  miss: AI pipeline → store in Redis → return
-
-/upload →  RabbitMQ available?  →  yes: enqueue job → 202 + job_id (returns in <1s)
-                                →  no:  run sync ingestion (old behaviour, fallback)
-```
-
-### `/query` workflow
-
-1. The query text is normalised (lowercased, whitespace collapsed), so `"What is X?"` and `"what is x?"` share the same cache entry.
-2. Redis is checked with key `query::<sha256(normalised)>`.
-   - **Hit** → the cached JSON is returned immediately.
-   - **Miss** → the full pipeline runs: `plan_query()` (Gemini extracts intent/domain/keywords) → `define_steps()` (1–3 retrieval steps) → for each step, `retrieve()` (FAISS + Graph, fused with RRF) → `extract_evidence()` → `generate_response()` (Gemini answer with citations) → `validate_response()` (lexical grounding check, no LLM call) → result is cached in Redis (TTL 1 hour) → returned.
-
-Pass `"no_cache": true` in the request body to bypass the cache for a specific query.
-
-### `/embed` workflow
-
-Runs full ingestion over every PDF in `data/pdfs/` (parsing and chunking are skipped if already cached in `data/processed/`). After ingestion:
-- the in-process FAISS/graph/embedder context is reset, and
-- all `query::*` and `retrieval::*` keys are flushed from Redis, so stale answers are never served.
-
-### `/upload` async workflow
-
-1. The file is validated and saved to `data/pdfs/`.
-2. A job is published to the `docqa.ingest` RabbitMQ queue, and Redis stores `job::<job_id>` with status `queued`.
-3. The API immediately returns `202 Accepted` with a `job_id`.
-4. A separate worker process (`python -m worker`) consumes the queue, runs ingestion, flushes caches, and updates the job status to `completed` or `failed`.
-5. The client polls `GET /api/v1/status/<job_id>` to check progress.
-
-If RabbitMQ isn't running, `/upload` automatically falls back to synchronous ingestion and returns `200` instead of `202`.
-
-### Running locally with caching + async uploads
+**Run ingestion:**
 
 ```bash
-# install dependencies
-pip install -r requirements.txt
+python -m rag_pipeline.ingestion.ingest --skip-mongo
+```
 
+**For async PDF uploads** (via the `/api/v1/upload` endpoint), start Redis, RabbitMQ, and a worker process:
+
+```bash
 # start Redis (Docker)
 docker run -d -p 6379:6379 redis:7
 
 # start RabbitMQ (Docker)
 docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+
+python -m rag_pipeline.services.worker
 ```
+
+If RabbitMQ isn't running, uploads fall back to synchronous ingestion automatically.
+
+## Query
+
+Every question is automatically routed as single-hop or multi-hop:
+
+**Single-hop** — one retrieval step is enough:
+- Plans the query once
+- Retrieves evidence in one hybrid search
+- Generates and validates one cited answer
+- Up to 3 LLM calls total
+
+**Multi-hop** — the question needs several related findings (e.g. comparing two topics):
+- Breaks the question into up to 3 sequential sub-questions
+- Each sub-question retrieves its own evidence and generates its own answer
+- Each step sees the previous steps' answers as context
+- The final step synthesizes everything into one answer, which is then validated
+- Up to 5 LLM calls total
+
+**Ask a question:**
 
 ```bash
-# terminal 1 — API server
-cd backend
-python app.py
-
-# terminal 2 — ingestion worker (only needed for async upload)
-cd backend
-python -m worker
+curl -X POST http://localhost:3001/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What are the main goals of the policy?", "final_top_k": 5}'
 ```
 
-```bash
-# health check
-curl http://localhost:3001/api/v1/health
+Repeat queries are served from the Redis cache (`cached: true` in the response). Pass `"no_cache": true` to bypass it for a single request.
+
+## Environment Variables
+
+Configure these in `backend/.env`:
+
+```text
+GEMINI_API_KEY_1=...
+GEMINI_API_KEY_2=...
+GEMINI_API_KEY_3=...
+MONGO_URI=mongodb://localhost:27017
+REDIS_URL=redis://localhost:6379
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+FAISS_INDEX_DIR=...
+GRAPH_INDEX_DIR=...
+QUERY_CACHE_TTL=3600
+RETRIEVAL_CACHE_TTL=1800
+JOB_STATUS_TTL=86400
 ```
 
-## Project Structure
+Gemini keys are rotated automatically across planning, generation, and validation calls. No key is hard-coded in the source.
 
+## API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/v1/health` | Check indexes and optional services |
+| POST | `/api/v1/embed` | Synchronously ingest all PDFs |
+| POST | `/api/v1/upload` | Upload a PDF for async or sync ingestion |
+| GET | `/api/v1/status/<job_id>` | Read asynchronous ingestion status |
+| POST | `/api/v1/query` | Ask a document-grounded question |
+
+### Query response
+
+```json
+{
+  "query": "What are the main goals of the policy?",
+  "is_multi_hop": false,
+  "answer": "...",
+  "is_sufficient": true,
+  "is_valid": true,
+  "grounding_score": 0.92,
+  "quality_score": 0.9,
+  "offensive_score": 0.0,
+  "citations": ["Policy p5"],
+  "steps": [
+    {
+      "step_number": 1,
+      "sub_query": "What are the main goals of the policy?",
+      "answer": "...",
+      "evidence": ["Policy p5"],
+      "score": 0.88,
+      "is_sufficient": true,
+      "is_final": true
+    }
+  ],
+  "flagged_sentences": [],
+  "validation_note": "...",
+  "elapsed_seconds": 1.23,
+  "cached": false
+}
 ```
+
+## File Responsibilities
+
+```text
 backend/
-├── app.py                 # Flask API entry point
-├── requirements.txt       # Python dependencies
-├── .env                   # Environment variables (API keys, DB URI, etc.)
-├── data/
-│   ├── pdfs/               # Source PDF documents
-│   └── indexes/
-│       ├── faiss/            # FAISS index files
-│       └── graph/            # Graph database/index files
-├── ingestion/              # PDF parsing, cleaning, chunking, embeddings
-│   ├── parser.py
-│   ├── chunker.py
-│   └── embedder.py
-├── retrieval/              # FAISS + graph hybrid retrieval
-│   ├── faiss.py
-│   ├── graph.py
-│   └── hybrid.py
-├── ai/                     # Core AI pipeline
-│   ├── planner.py            # Understand user query
-│   ├── step_definer.py       # Create retrieval steps
-│   ├── generator.py          # Generate answer (Gemini)
-│   ├── validator.py          # Check evidence grounding
-│   └── pipeline.py           # Orchestrate the AI flow
-├── database/
-│   └── mongodb.py           # MongoDB connection & CRUD
-├── agents/
-│   └── crew.py               # Agentic orchestration (optional)
-└── services/                # Additional infrastructure
-    ├── redis.py               # Redis caching
-    ├── rabbitmq.py            # Message queue
-    └── ocr.py                 # OCR for scanned PDFs
+├── app.py                         Flask entry point and API routes
+├── requirements.txt               Python dependencies
+├── .env                           Local configuration and secrets
+├── rag_pipeline/
+│   ├── ai/
+│   │   ├── planner.py             Query planning and max-three-step limit
+│   │   ├── step_definer.py        Domain detection for each step
+│   │   ├── pipeline.py             End-to-end query orchestration
+│   │   ├── extractor.py            Per-step retrieval adapter
+│   │   ├── generator.py            Grounded Gemini answer generation
+│   │   ├── validator.py            Answer validation and fallback heuristic
+│   │   └── key.py                  Rotating Gemini key management
+│   ├── ingestion/
+│   │   ├── parser.py               PDF text, pages, and section detection
+│   │   ├── chunker.py               Sentence-based overlapping chunks
+│   │   ├── embedder.py              Sentence Transformer embeddings
+│   │   ├── processed.py             Parsed/chunked JSON cache
+│   │   ├── domain_index.py          Domain keyword map generation
+│   │   └── ingest.py                Full ingestion orchestration
+│   ├── retrieval/
+│   │   ├── faiss.py                 Vector index build/load/search
+│   │   ├── graph.py                 Knowledge graph and graph search
+│   │   └── hybrid.py                FAISS/graph RRF fusion
+│   ├── database/
+│   │   └── mongodb.py               Chunk and embedding persistence
+│   ├── memory/
+│   │   └── history.py               Per-query multi-hop history
+│   ├── services/
+│   │   ├── redis.py                 Query cache and job-status store
+│   │   ├── rabbitmq.py               Upload queue and consumer
+│   │   └── worker.py                 Background ingestion process
+│   └── data/
+│       ├── pdfs/                     Source PDFs
+│       ├── processed/                Parser/chunker cache
+│       └── indexes/                  FAISS, graph, and domain artifacts
 ```
-
-### Development Phases
-
-1. **Ingestion** — Parsing → Chunking → Embedding
-2. **Retrieval** — FAISS + Graph (hybrid)
-3. **AI Pipeline** — Planner → Step Definer → Retriever → Generator → Validator
-4. **Integration** — `app.py` + API
-5. **Agentic Orchestration** — optional agent-based workflow
-6. **Extra Features** — Redis + RabbitMQ + OCR
 
 ## Known Limitations
 
-- No OCR — only text-based PDFs are supported
-- Grounding validation uses lexical overlap, so it may miss paraphrased claims
-- No authentication, rate limiting, or upload size limits yet
-- Ingestion is synchronous unless RabbitMQ is running
-- Re-run ingestion with `rebuild=true` after changing source files
+- OCR is not implemented; scanned image-only PDFs may produce no text.
+- Domain filtering currently passes the first detected domain to graph retrieval.
+- Multi-hop history is in memory for one query and is not persisted between requests.
+- Retrieval cache helpers exist, but the hybrid retriever currently performs retrieval directly.
+- Validation is a quality heuristic and does not prove every claim semantically.
+- MongoDB, Redis, and RabbitMQ are optional depending on the selected workflow.
+- Authentication, rate limiting, and upload-size limits are not implemented.

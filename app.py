@@ -54,16 +54,15 @@ from rag_pipeline.services.rabbitmq import publish_ingestion_job
 
 BASE_DIR      = Path(__file__).resolve().parent
 INDEX_DIR     = BASE_DIR / "rag_pipeline" / "data" / "indexes" / "faiss"
-GRAPH_DIR     = BASE_DIR / "rag_pipeline" / "data" / "indexes" / "graph"
-PDF_DIR       = BASE_DIR / "rag_pipeline" / "data" / "pdfs"
-PROCESSED_DIR = BASE_DIR / "rag_pipeline" / "data" / "processed"
+GRAPH_DIR     = BASE_DIR / "rag_pipeline" /"data" / "indexes" / "graph"
+PDF_DIR       = BASE_DIR / "rag_pipeline" /"data" / "pdfs"
+PROCESSED_DIR = BASE_DIR / "rag_pipeline" /"data" / "processed"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
-# ── In-process retrieval context (FAISS + graph + embedder) ──────────────────
 _context      = None
 _context_lock = threading.Lock()
 
@@ -98,8 +97,6 @@ def _reset_context() -> None:
     with _context_lock:
         _context = None
 
-
-# ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/health")
 def health():
@@ -136,8 +133,6 @@ def health():
     }), (200 if ready else 503)
 
 
-# ── Embed (synchronous full re-ingestion) ─────────────────────────────────────
-
 @app.post("/api/v1/embed")
 def embed():
     """
@@ -166,8 +161,6 @@ def embed():
         logger.exception("Embedding pipeline failed")
         return jsonify({"status": "failed", "error": str(exc)}), 500
 
-
-# ── Upload (async via RabbitMQ, sync fallback) ────────────────────────────────
 
 @app.post("/api/v1/upload")
 def upload():
@@ -209,7 +202,6 @@ def upload():
 
     file.save(dest)
 
-    # ── Try async path first ──────────────────────────────────────────────────
     try:
         job_id = publish_ingestion_job(filename=filename, rebuild=rebuild)
         return jsonify({
@@ -228,7 +220,6 @@ def upload():
             broker_err,
         )
 
-    # ── Sync fallback ─────────────────────────────────────────────────────────
     try:
         summary = run_ingestion(
             pdf_dir=PDF_DIR,
@@ -252,8 +243,6 @@ def upload():
         logger.exception("Upload ingestion failed")
         return jsonify({"status": "failed", "filename": filename, "error": str(exc)}), 500
 
-
-# ── Job status ────────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/status/<job_id>")
 def job_status(job_id: str):
@@ -289,22 +278,41 @@ def job_status(job_id: str):
     return jsonify(status), http_code
 
 
-# ── Query (with Redis cache) ──────────────────────────────────────────────────
-
 @app.post("/api/v1/query")
 def query():
     """
     Answer a natural-language question using the AI pipeline.
 
+    Response shape (both single-hop and multi-hop):
+    {
+        "query":           "...",
+        "is_multi_hop":    false,
+        "answer":          "...",          # final answer (plain text)
+        "is_sufficient":   true,
+        "is_valid":        true,
+        "grounding_score": 0.92,
+        "citations":       ["DocName p5", ...],  # deduplicated across all steps
+        "steps": [
+            {
+                "step_number":   1,
+                "sub_query":     "...",
+                "answer":        "...",
+                "evidence":      ["DocName p5", ...],
+                "score":         0.85,
+                "is_sufficient": true,
+                "is_final":      true
+            }
+        ],
+        "flagged_sentences": [],
+        "validation_note":   "...",
+        "elapsed_seconds":   1.23,
+        "cached":            false
+    }
+
     Cache behaviour
     ---------------
-    1. Normalise the query string and check Redis.
-    2. Cache hit  → return the stored response immediately (no pipeline call).
-    3. Cache miss → run the full pipeline, store the result, return it.
-
-    The 'no_cache' field in the JSON body (bool, default false) bypasses the
-    cache for this request without invalidating existing entries — useful for
-    debugging or forcing a fresh answer.
+    Results are cached in Redis keyed by the normalised query string.
+    Pass "no_cache": true in the request body to bypass for one request.
     """
     payload    = request.get_json(silent=True) or {}
     query_text = payload.get("query")
@@ -338,7 +346,6 @@ def query():
             set_query_cache(query_text, result)
 
         return jsonify(result), 200
-
     except FileNotFoundError as exc:
         return jsonify({
             "error":  "Indexes are not ready. Call POST /api/v1/embed first.",
