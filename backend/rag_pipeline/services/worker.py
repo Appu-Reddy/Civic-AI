@@ -3,7 +3,7 @@ worker.py — RabbitMQ ingestion worker for DocQA.
 
 Run this as a separate process alongside the Flask API:
 
-    python -m worker
+    python -m services.worker
 
 The worker:
   1. Connects to RabbitMQ (RABBITMQ_URL from .env).
@@ -27,21 +27,25 @@ import logging
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
+SERVICES_DIR = Path(__file__).resolve().parent
+while str(SERVICES_DIR) in sys.path:
+    sys.path.remove(str(SERVICES_DIR))
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from dotenv import load_dotenv
 load_dotenv(BASE_DIR / ".env")
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
+logging.getLogger("services.redis").setLevel(logging.ERROR)
+logging.getLogger("services.rabbitmq").setLevel(logging.INFO)
 logger = logging.getLogger("docqa.worker")
+logger.setLevel(logging.INFO)
 
 
 def main() -> None:
-    from rabbitmq import start_worker, QUEUE_NAME
-    from redis import is_available as redis_up
-    logger.info("DocQA Ingestion Worker starting")
+    from services.rabbitmq import start_worker
 
     try:
         start_worker(prefetch_count=1)

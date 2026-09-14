@@ -39,10 +39,22 @@ for _logger_name in (
     logging.getLogger(_logger_name).setLevel(logging.ERROR)
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 from rag_pipeline.ai.pipeline import load_retrieval_context, run_pipeline
 from rag_pipeline.database.mongodb import get_collection
+from rag_pipeline.database.query_store import (
+    get_query_by_id,
+    get_upload_by_job_id,
+    list_queries,
+    list_uploads,
+    query_stats,
+    save_query_record,
+    save_upload_record,
+    update_upload_status,
+    upload_stats,
+)
 from rag_pipeline.ingestion.ingest import run_ingestion
 from rag_pipeline.services.redis import (
     flush_all_caches,
@@ -62,6 +74,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
 app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 _context      = None
 _context_lock = threading.Lock()
@@ -204,6 +217,13 @@ def upload():
 
     try:
         job_id = publish_ingestion_job(filename=filename, rebuild=rebuild)
+        save_upload_record(
+            job_id=job_id,
+            filename=filename,
+            status="queued",
+            async_mode=True,
+            rebuild=rebuild,
+        )
         return jsonify({
             "status":  "queued",
             "async":   True,
@@ -230,9 +250,19 @@ def upload():
         )
         _reset_context()
         cache_summary = flush_all_caches()
+        sync_job_id = f"sync-{filename}"
+        save_upload_record(
+            job_id=sync_job_id,
+            filename=filename,
+            status="completed",
+            async_mode=False,
+            rebuild=rebuild,
+            summary=summary,
+        )
         return jsonify({
             "status":        "completed",
             "async":         False,
+            "job_id":        sync_job_id,
             "filename":      filename,
             "summary":       summary,
             "cache_flushed": cache_summary,
@@ -241,6 +271,14 @@ def upload():
     except Exception as exc:
         dest.unlink(missing_ok=True)
         logger.exception("Upload ingestion failed")
+        save_upload_record(
+            job_id=f"failed-{filename}",
+            filename=filename,
+            status="failed",
+            async_mode=False,
+            rebuild=rebuild,
+            error=str(exc),
+        )
         return jsonify({"status": "failed", "filename": filename, "error": str(exc)}), 500
 
 
@@ -255,16 +293,28 @@ def job_status(job_id: str):
     Returns 503 if Redis is unavailable (cannot look up status).
     """
     from rag_pipeline.services.redis import is_available as redis_up
-    if not redis_up():
-        return jsonify({
-            "error": "Status store (Redis) is unavailable. Cannot look up job status.",
-        }), 503
-
-    status = get_job_status(job_id)
+    status = get_job_status(job_id) if redis_up() else None
     if status is None:
-        return jsonify({
-            "error": f"Job '{job_id}' not found. It may have expired or never existed.",
-        }), 404
+        upload = get_upload_by_job_id(job_id)
+        if upload is None:
+            return jsonify({
+                "error": f"Job '{job_id}' not found. It may have expired or never existed.",
+            }), 404
+        status = {
+            "job_id": upload["job_id"],
+            "filename": upload["filename"],
+            "status": upload["status"],
+            "rebuild": upload.get("rebuild", False),
+            "summary": upload.get("summary"),
+            "error": upload.get("error"),
+        }
+
+    update_upload_status(
+        job_id=job_id,
+        status=status.get("status", "unknown"),
+        summary=status.get("summary"),
+        error=status.get("error"),
+    )
 
     # If the job completed, also reset the in-process retrieval context so the
     # next query picks up the freshly built indexes from this API process too.
@@ -328,6 +378,9 @@ def query():
         cached = get_query_cache(query_text)
         if cached is not None:
             cached["cached"] = True
+            record_id = save_query_record(cached)
+            if record_id:
+                cached["record_id"] = record_id
             return jsonify(cached), 200
 
     # ── Cache miss: run pipeline ──────────────────────────────────────────────
@@ -340,6 +393,10 @@ def query():
         )
         result = response.to_dict()
         result["cached"] = False
+
+        record_id = save_query_record(result)
+        if record_id:
+            result["record_id"] = record_id
 
         # Store in cache (no-ops silently if Redis is unavailable)
         if not no_cache:
@@ -354,6 +411,46 @@ def query():
     except Exception as exc:
         logger.exception("Query pipeline failed")
         return jsonify({"error": str(exc)}), 500
+
+
+@app.get("/api/v1/queries")
+def queries_list():
+    """Return recent query history from MongoDB query_data collection."""
+    limit = min(int(request.args.get("limit", 50)), 100)
+    skip = int(request.args.get("skip", 0))
+    try:
+        return jsonify({
+            "queries": list_queries(limit=limit, skip=skip),
+            "stats": query_stats(),
+        }), 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.get("/api/v1/queries/<query_id>")
+def query_detail(query_id: str):
+    """Return a single saved query record by id."""
+    try:
+        record = get_query_by_id(query_id)
+        if record is None:
+            return jsonify({"error": f"Query '{query_id}' not found."}), 404
+        return jsonify(record), 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.get("/api/v1/uploads")
+def uploads_list():
+    """Return recent PDF upload jobs with RabbitMQ job IDs."""
+    limit = min(int(request.args.get("limit", 50)), 100)
+    skip = int(request.args.get("skip", 0))
+    try:
+        return jsonify({
+            "uploads": list_uploads(limit=limit, skip=skip),
+            "stats": upload_stats(),
+        }), 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
 
 
 if __name__ == "__main__":

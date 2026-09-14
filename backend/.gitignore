@@ -68,3 +68,4 @@ build/
 
 rag_pipeline/data/indexes/
 rag_pipeline/data/processed/
+context.md

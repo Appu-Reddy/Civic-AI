@@ -1,5 +1,5 @@
 """
-services/rabbitmq.py — RabbitMQ publisher (API side) and consumer (worker side).
+rabbitmq.py — RabbitMQ publisher (API side) and consumer (worker side).
 
 Architecture
 ------------
@@ -33,6 +33,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 QUEUE_NAME: str  = "docqa.ingest"
@@ -50,6 +51,7 @@ def _get_connection():
         import pika
         params = pika.URLParameters(RABBITMQ_URL)
         params.socket_timeout = 5
+        logger.info("INFO: Connected to Rabbit-MQ.")
         return pika.BlockingConnection(params)
     except Exception as exc:
         raise ConnectionError(f"RabbitMQ unavailable at {RABBITMQ_URL}: {exc}") from exc
@@ -109,7 +111,7 @@ def publish_ingestion_job(filename: str, rebuild: bool = False) -> str:
 
     # Mark the job as queued in Redis so /status/<job_id> can respond immediately
     try:
-        from services.redis import set_job_status
+        from .redis import set_job_status
         set_job_status(job_id, {
             "job_id":   job_id,
             "filename": filename,
@@ -119,9 +121,9 @@ def publish_ingestion_job(filename: str, rebuild: bool = False) -> str:
             "error":    None,
         })
     except Exception as exc:
-        logger.warning("Could not persist initial job status to Redis: %s", exc)
+        logger.debug("Could not persist initial job status to Redis: %s", exc)
 
-    # logger.info("Ingestion job queued: job_id=%s filename=%s", job_id, filename)
+    logger.info("queued: job_id=%s filename=%s", job_id, filename)
     return job_id
 
 
@@ -139,7 +141,7 @@ def _process_message(body: bytes) -> None:
         5. Flush Redis caches so stale query results are evicted
         6. Set status → "completed" or "failed" in Redis
     """
-    from services.redis import set_job_status, flush_all_caches
+    from .redis import set_job_status, flush_all_caches
 
     try:
         payload = json.loads(body)
@@ -151,14 +153,21 @@ def _process_message(body: bytes) -> None:
     filename = payload.get("filename", "")
     rebuild  = bool(payload.get("rebuild", False))
 
-    set_job_status(job_id, {
+    processing_status = {
         "job_id":   job_id,
         "filename": filename,
         "status":   "processing",
         "rebuild":  rebuild,
         "summary":  None,
         "error":    None,
-    })
+    }
+    set_job_status(job_id, processing_status)
+    logger.info("working: job_id=%s filename=%s", job_id, filename)
+    try:
+        from database.query_store import update_upload_status
+        update_upload_status(job_id, "processing")
+    except Exception:
+        pass
 
     try:
         from pathlib import Path as _Path
@@ -180,26 +189,38 @@ def _process_message(body: bytes) -> None:
         # Flush both caches — indexes have changed, all cached answers are stale
         flush_all_caches()
 
-        set_job_status(job_id, {
+        completed_status = {
             "job_id":   job_id,
             "filename": filename,
             "status":   "completed",
             "rebuild":  rebuild,
             "summary":  summary,
             "error":    None,
-        })
-        logger.info("Worker completed: job_id=%s", job_id)
+        }
+        set_job_status(job_id, completed_status)
+        try:
+            from database.query_store import update_upload_status
+            update_upload_status(job_id, "completed", summary=summary)
+        except Exception:
+            pass
+        logger.info("done: job_id=%s filename=%s", job_id, filename)
 
     except Exception as exc:
         logger.exception("Worker failed: job_id=%s", job_id)
-        set_job_status(job_id, {
+        failed_status = {
             "job_id":   job_id,
             "filename": filename,
             "status":   "failed",
             "rebuild":  rebuild,
             "summary":  None,
             "error":    str(exc),
-        })
+        }
+        set_job_status(job_id, failed_status)
+        try:
+            from database.query_store import update_upload_status
+            update_upload_status(job_id, "failed", error=str(exc))
+        except Exception:
+            pass
 
 
 def start_worker(
@@ -241,7 +262,7 @@ def start_worker(
                     ch.basic_ack(delivery_tag=method.delivery_tag)
 
             channel.basic_consume(queue=QUEUE_NAME, on_message_callback=_callback)
-            logger.info("Worker ready — consuming queue '%s'\n", QUEUE_NAME)
+            logger.debug("Worker ready — consuming queue '%s'", QUEUE_NAME)
             channel.start_consuming()
 
         except KeyboardInterrupt:
