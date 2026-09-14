@@ -14,9 +14,9 @@ The application is domain-independent. It can work with policy, education, healt
 
 ## Architecture
 
-![Civic-AI Architecture](assests/architecture.png)
+![Civic-AI Architecture](backend/assests/architecture.png)
 
-![How it Works](assests/sequence.png)
+![How it Works](backend/assests/sequence.png)
 
 ## Setup
 
