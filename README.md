@@ -89,11 +89,30 @@ curl -X POST http://localhost:3001/api/v1/query \
 
 Repeat queries are served from the Redis cache (`cached: true` in the response). Pass `"no_cache": true` to bypass it for a single request.
 
+## Docker
+
+```bash
+docker build -t civic_ai:latest .
+docker tag civic_ai:latest <your_registry>/civic_ai:latest
+docker push <your_registry>/civic_ai:latest
+```
+
+Change environmental variables in .env, then run
+
+```bash
+docker compose up -d
+```
+
 ## Environment Variables
 
 Configure these in `backend/.env`:
 
 ```text
+MONGO_URI=...
+DOCKERHUB_USERNAME=...
+IMAGE_TAG=...
+MONGO_URI_DOCKER=...
+APP_DB_NAME=...
 GEMINI_API_KEY_1=...
 GEMINI_API_KEY_2=...
 GEMINI_API_KEY_3=...
